@@ -70,6 +70,9 @@ def get_state():
         expires_in = None
         if state["token_expires_at"]:
             expires_in = max(0, int(state["token_expires_at"] - time.time()))
+        # Check if the s6 script has signaled Plex is ready
+        if state["screen"] == "initializing" and os.path.exists("/tmp/plex-setup-done"):
+            state["screen"] = "done"
         return jsonify({
             "screen": state["screen"],
             "logs": list(state["logs"])[:50],

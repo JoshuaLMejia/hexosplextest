@@ -1,50 +1,17 @@
 #!/usr/bin/with-contenv bash
 # Replaces the default Plex service run script.
-# 1. Starts the setup Flask app on port 32400
-# 2. Waits for /tmp/plex-claim to be written by the setup app
-# 3. Kills Flask, injects PLEX_CLAIM, hands off to the real Plex binary
+# 1. Starts Flask setup UI on port 32400
+# 2. Starts Plex on a temp port (32401) in the background
+# 3. Waits for user to complete OAuth flow (/tmp/plex-claim written)
+# 4. Waits for Plex to be ready on 32401
+# 5. Kills Flask, Plex switches to 32400 via ADVERTISE_IP / natural rebind
 
 SIGNAL_FILE="/tmp/plex-claim"
 SETUP_PID_FILE="/tmp/setup-server.pid"
+PLEX_READY_FILE="/tmp/plex-ready"
 TIMEOUT=600
 ELAPSED=0
 INTERVAL=3
-
-echo "[plex-setup] Starting setup UI on port 32400..."
-/opt/setup-venv/bin/python /app/setup_server.py &
-echo $! > "$SETUP_PID_FILE"
-
-echo "[plex-setup] Waiting for user to complete setup..."
-
-while [ ! -f "$SIGNAL_FILE" ]; do
-    if [ "$ELAPSED" -ge "$TIMEOUT" ]; then
-        echo "[plex-setup] Timed out waiting for setup. Starting Plex unclaimed."
-        break
-    fi
-    sleep "$INTERVAL"
-    ELAPSED=$((ELAPSED + INTERVAL))
-done
-
-# Shut down the setup server
-if [ -f "$SETUP_PID_FILE" ]; then
-    SETUP_PID="$(cat "$SETUP_PID_FILE")"
-    echo "[plex-setup] Stopping setup UI (PID $SETUP_PID)..."
-    kill "$SETUP_PID" 2>/dev/null
-    sleep 2
-    kill -9 "$SETUP_PID" 2>/dev/null
-    rm -f "$SETUP_PID_FILE"
-fi
-
-# Inject the claim token if we got one
-if [ -f "$SIGNAL_FILE" ]; then
-    CLAIM_TOKEN="$(cat "$SIGNAL_FILE")"
-    if [ -n "$CLAIM_TOKEN" ]; then
-        echo "[plex-setup] Injecting PLEX_CLAIM."
-        export PLEX_CLAIM="$CLAIM_TOKEN"
-    fi
-fi
-
-echo "[plex-setup] Starting Plex Media Server."
 
 home="$(echo ~plex)"
 export PLEX_MEDIA_SERVER_APPLICATION_SUPPORT_DIR="${PLEX_MEDIA_SERVER_APPLICATION_SUPPORT_DIR:-${home}/Library/Application Support}"
@@ -60,4 +27,63 @@ if [ ! -d "${PLEX_MEDIA_SERVER_APPLICATION_SUPPORT_DIR}" ]; then
     chown plex:plex "${PLEX_MEDIA_SERVER_APPLICATION_SUPPORT_DIR}"
 fi
 
-exec s6-setuidgid plex /usr/lib/plexmediaserver/Plex\ Media\ Server
+echo "[plex-setup] Starting setup UI on port 32400..."
+/opt/setup-venv/bin/python /app/setup_server.py &
+echo $! > "$SETUP_PID_FILE"
+
+echo "[plex-setup] Waiting for user to complete OAuth setup..."
+
+while [ ! -f "$SIGNAL_FILE" ]; do
+    if [ "$ELAPSED" -ge "$TIMEOUT" ]; then
+        echo "[plex-setup] Timed out. Starting Plex without claim token."
+        break
+    fi
+    sleep "$INTERVAL"
+    ELAPSED=$((ELAPSED + INTERVAL))
+done
+
+# Inject the claim token
+if [ -f "$SIGNAL_FILE" ]; then
+    CLAIM_TOKEN="$(cat "$SIGNAL_FILE")"
+    if [ -n "$CLAIM_TOKEN" ]; then
+        echo "[plex-setup] Injecting PLEX_CLAIM."
+        export PLEX_CLAIM="$CLAIM_TOKEN"
+    fi
+fi
+
+# Start Plex on a background port (32401) while Flask still holds 32400
+echo "[plex-setup] Starting Plex in background on port 32401..."
+export PLEX_MEDIA_SERVER_PORT=32401
+s6-setuidgid plex /usr/lib/plexmediaserver/Plex\ Media\ Server &
+PLEX_PID=$!
+
+# Wait for Plex to be ready on 32401
+echo "[plex-setup] Waiting for Plex to be ready..."
+PLEX_WAIT=0
+until curl -sf http://localhost:32401/identity | grep -q machineIdentifier; do
+    sleep 3
+    PLEX_WAIT=$((PLEX_WAIT + 3))
+    if [ "$PLEX_WAIT" -ge 120 ]; then
+        echo "[plex-setup] Plex did not come up on 32401 in time. Handing off anyway."
+        break
+    fi
+done
+
+# Write done signal for the Flask UI to show the "done" screen
+touch /tmp/plex-setup-done
+
+# Give the browser a moment to poll and see the done screen
+sleep 5
+
+# Kill Flask so Plex can take over 32400
+if [ -f "$SETUP_PID_FILE" ]; then
+    SETUP_PID="$(cat "$SETUP_PID_FILE")"
+    echo "[plex-setup] Setup complete. Handing port 32400 to Plex."
+    kill "$SETUP_PID" 2>/dev/null
+    sleep 1
+    kill -9 "$SETUP_PID" 2>/dev/null
+    rm -f "$SETUP_PID_FILE"
+fi
+
+# Wait for Plex (keeps s6 from restarting the service)
+wait $PLEX_PID
