@@ -1,5 +1,4 @@
 import re
-import subprocess
 import time
 import requests
 from hexos_hooks import HookContext
@@ -67,21 +66,17 @@ def _wait_for_ready(ctx: HookContext):
 
 
 def _wait_for_token(ctx: HookContext, container_name: str):
+    # We're running inside the container — read Preferences.xml directly
     for attempt in range(1, 21):
         try:
-            result = subprocess.run(
-                ["docker", "exec", container_name, "cat", PREFS_PATH],
-                capture_output=True,
-                text=True,
-                timeout=10,
-            )
-            if result.returncode == 0:
-                match = re.search(r'PlexOnlineToken="([^"]+)"', result.stdout)
-                if match:
-                    ctx.log("Plex account token found.")
-                    return match.group(1)
-        except subprocess.SubprocessError as e:
-            ctx.log(f"Error reading Preferences.xml (attempt {attempt}): {e}")
+            with open(PREFS_PATH, "r") as f:
+                contents = f.read()
+            match = re.search(r'PlexOnlineToken="([^"]+)"', contents)
+            if match:
+                ctx.log("Plex account token found.")
+                return match.group(1)
+        except (FileNotFoundError, IOError):
+            pass
 
         if attempt == 1:
             ctx.log("Waiting for Preferences.xml to be written...")

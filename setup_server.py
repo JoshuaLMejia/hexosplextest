@@ -70,9 +70,6 @@ def get_state():
         expires_in = None
         if state["token_expires_at"]:
             expires_in = max(0, int(state["token_expires_at"] - time.time()))
-        # Check if the s6 script has signaled Plex is ready
-        if state["screen"] == "initializing" and os.path.exists("/tmp/plex-setup-done"):
-            state["screen"] = "done"
         return jsonify({
             "screen": state["screen"],
             "logs": list(state["logs"])[:50],
@@ -163,11 +160,11 @@ def auth_poll():
             state["claim_token"] = claim_token
             state["screen"] = "initializing"
 
-        # Write the signal file so the s6 cont-init script unblocks Plex startup
+        # Write the signal file — s6 run script sees this and starts Plex
         with open(SIGNAL_FILE, "w") as f:
             f.write(claim_token)
 
-        # Run the post-install hook in the background
+        # Run the post-install hook in the background (waits for Plex to be ready first)
         threading.Thread(target=_run_post_install, daemon=True).start()
 
         return jsonify({"ok": True, "done": True})
