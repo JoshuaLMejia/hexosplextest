@@ -1,0 +1,28 @@
+services:
+  plex:
+    build: .
+    container_name: hexosplex
+    network_mode: host
+    environment:
+      # Your timezone
+      TZ: America/New_York
+      # Paths to your media on the host (mounted into the container below)
+      PLEX_MOVIES_PATH: /movies
+      PLEX_SHOWS_PATH: /shows
+      # TrueNAS API (optional — only needed if the hook calls back to TrueNAS)
+      TRUENAS_API_KEY: ""
+      TRUENAS_REST_URL: "http://localhost/api/v2.0"
+      # Override if your container name differs
+      PLEX_CONTAINER_NAME: "hexosplex"
+      # Port the setup UI listens on
+      PLEX_SETUP_PORT: "7070"
+    volumes:
+      # Plex config — persist this across container restarts
+      - plex-config:/config
+      # Media directories — adjust host paths to match your setup
+      - /path/to/your/movies:/movies:ro
+      - /path/to/your/shows:/shows:ro
+    restart: unless-stopped
+
+volumes:
+  plex-config:

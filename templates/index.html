@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HexOS Plex Setup</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0f0f0f;
+      --surface: #1a1a1a;
+      --border: #2a2a2a;
+      --text: #e5e5e5;
+      --muted: #888;
+      --accent: #e5a00d;
+      --accent-hover: #f5b82e;
+      --error: #e05050;
+      --success: #50c878;
+      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 48px 40px;
+      width: 100%;
+      max-width: 480px;
+      text-align: center;
+    }
+
+    .logo {
+      width: 56px;
+      height: 56px;
+      margin: 0 auto 24px;
+      background: var(--accent);
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 28px;
+    }
+
+    h1 {
+      font-size: 22px;
+      font-weight: 600;
+      margin-bottom: 8px;
+      letter-spacing: -0.3px;
+    }
+
+    .subtitle {
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.5;
+      margin-bottom: 32px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      background: var(--accent);
+      color: #000;
+      font-weight: 600;
+      font-size: 15px;
+      padding: 12px 28px;
+      border-radius: 8px;
+      border: none;
+      cursor: pointer;
+      text-decoration: none;
+      transition: background 0.15s;
+      width: 100%;
+    }
+
+    .btn:hover { background: var(--accent-hover); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .btn-secondary {
+      background: transparent;
+      color: var(--muted);
+      border: 1px solid var(--border);
+      margin-top: 12px;
+      font-weight: 500;
+    }
+    .btn-secondary:hover { background: var(--border); color: var(--text); }
+
+    /* Waiting for auth screen */
+    .waiting-hint {
+      background: #1f1f1f;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+      font-size: 13px;
+      color: var(--muted);
+      margin-bottom: 24px;
+      line-height: 1.6;
+      text-align: left;
+    }
+
+    .timer {
+      font-size: 13px;
+      color: var(--muted);
+      margin-top: 16px;
+    }
+    .timer.urgent { color: var(--error); }
+
+    /* Spinner */
+    .spinner {
+      width: 32px;
+      height: 32px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 20px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Log stream */
+    .log-box {
+      background: #111;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 14px;
+      font-family: "SF Mono", "Fira Code", monospace;
+      font-size: 12px;
+      line-height: 1.7;
+      text-align: left;
+      max-height: 220px;
+      overflow-y: auto;
+      margin-bottom: 24px;
+      color: #ccc;
+    }
+
+    .log-line { display: flex; gap: 10px; }
+    .log-time { color: var(--muted); flex-shrink: 0; }
+    .log-msg { word-break: break-word; }
+
+    /* Done screen */
+    .check {
+      width: 56px;
+      height: 56px;
+      margin: 0 auto 24px;
+      background: rgba(80, 200, 120, 0.15);
+      border: 2px solid var(--success);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+    }
+
+    /* Error screen */
+    .error-box {
+      background: rgba(224, 80, 80, 0.1);
+      border: 1px solid var(--error);
+      border-radius: 8px;
+      padding: 14px;
+      font-size: 13px;
+      color: var(--error);
+      margin-bottom: 24px;
+      text-align: left;
+      word-break: break-word;
+    }
+
+    .screen { display: none; }
+    .screen.active { display: block; }
+  </style>
+</head>
+<body>
+<div class="card">
+
+  <!-- LOGIN SCREEN -->
+  <div id="screen-login" class="screen">
+    <div class="logo">▶</div>
+    <h1>Set up Plex</h1>
+    <p class="subtitle">Sign in to your Plex account to claim this server and create your media libraries automatically.</p>
+    <button class="btn" id="btn-signin" onclick="startAuth()">Sign in with Plex</button>
+  </div>
+
+  <!-- WAITING FOR AUTH SCREEN -->
+  <div id="screen-waiting_auth" class="screen">
+    <div class="logo">▶</div>
+    <h1>Complete sign-in</h1>
+    <div class="waiting-hint">
+      A Plex sign-in page has opened in a new tab.<br><br>
+      Sign in there, then return to this page. Setup will continue automatically.
+    </div>
+    <div class="spinner"></div>
+    <p class="subtitle">Waiting for you to sign in...</p>
+    <div class="timer" id="token-timer"></div>
+    <button class="btn btn-secondary" onclick="restartAuth()">Start over</button>
+  </div>
+
+  <!-- INITIALIZING SCREEN -->
+  <div id="screen-initializing" class="screen">
+    <div class="spinner"></div>
+    <h1>Setting up your server</h1>
+    <p class="subtitle" style="margin-bottom: 20px;">This takes about a minute. Don't close this tab.</p>
+    <div class="log-box" id="log-box"></div>
+  </div>
+
+  <!-- DONE SCREEN -->
+  <div id="screen-done" class="screen">
+    <div class="check">✓</div>
+    <h1>Plex is ready</h1>
+    <p class="subtitle">Your server is set up, your account is linked, and your media libraries have been created.</p>
+    <a class="btn" href="http://localhost:32400/web" target="_blank">Open Plex</a>
+  </div>
+
+  <!-- ERROR SCREEN -->
+  <div id="screen-error" class="screen">
+    <div class="logo" style="background: var(--error);">!</div>
+    <h1>Setup encountered an error</h1>
+    <div class="error-box" id="error-msg"></div>
+    <p class="subtitle">Plex is still running. You can complete setup manually at port 32400.</p>
+    <button class="btn btn-secondary" onclick="restartAuth()">Try again</button>
+  </div>
+
+</div>
+
+<script>
+  let currentScreen = '{{ screen }}';
+  let pollInterval = null;
+  let stateInterval = null;
+  let timerInterval = null;
+
+  function showScreen(name) {
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+    const el = document.getElementById('screen-' + name);
+    if (el) el.classList.add('active');
+    currentScreen = name;
+  }
+
+  function startAuth() {
+    const btn = document.getElementById('btn-signin');
+    btn.disabled = true;
+    btn.textContent = 'Opening Plex...';
+
+    fetch('/api/auth/start', { method: 'POST' })
+      .then(r => r.json())
+      .then(data => {
+        if (!data.ok) throw new Error(data.error || 'Failed to start auth');
+        window.open(data.auth_url, '_blank');
+        showScreen('waiting_auth');
+        startPolling();
+        startTimer();
+      })
+      .catch(err => {
+        btn.disabled = false;
+        btn.textContent = 'Sign in with Plex';
+        alert('Could not start sign-in: ' + err.message);
+      });
+  }
+
+  function startPolling() {
+    if (pollInterval) clearInterval(pollInterval);
+    pollInterval = setInterval(() => {
+      fetch('/api/auth/poll')
+        .then(r => r.json())
+        .then(data => {
+          if (data.done) {
+            clearInterval(pollInterval);
+            clearInterval(timerInterval);
+            showScreen('initializing');
+            startStatePolling();
+          }
+        })
+        .catch(() => {});
+    }, 2000);
+  }
+
+  function startStatePolling() {
+    if (stateInterval) clearInterval(stateInterval);
+    stateInterval = setInterval(() => {
+      fetch('/api/state')
+        .then(r => r.json())
+        .then(data => {
+          renderLogs(data.logs);
+          if (data.screen === 'done') {
+            clearInterval(stateInterval);
+            showScreen('done');
+          } else if (data.screen === 'error') {
+            clearInterval(stateInterval);
+            const errEl = document.getElementById('error-msg');
+            if (errEl) errEl.textContent = data.error || 'Unknown error';
+            showScreen('error');
+          }
+        })
+        .catch(() => {});
+    }, 2000);
+  }
+
+  function startTimer() {
+    const el = document.getElementById('token-timer');
+    if (timerInterval) clearInterval(timerInterval);
+    timerInterval = setInterval(() => {
+      fetch('/api/state')
+        .then(r => r.json())
+        .then(data => {
+          if (data.expires_in === null || data.expires_in === undefined) return;
+          const s = data.expires_in;
+          const m = Math.floor(s / 60);
+          const sec = s % 60;
+          if (el) {
+            el.textContent = s > 0
+              ? `Token expires in ${m}:${String(sec).padStart(2, '0')}`
+              : 'Token expired — please start over';
+            el.className = 'timer' + (s < 60 ? ' urgent' : '');
+          }
+          if (s <= 0) clearInterval(timerInterval);
+        })
+        .catch(() => {});
+    }, 1000);
+  }
+
+  function renderLogs(logs) {
+    const box = document.getElementById('log-box');
+    if (!box) return;
+    box.innerHTML = logs.map(l =>
+      `<div class="log-line"><span class="log-time">${l.time}</span><span class="log-msg">${escHtml(l.message)}</span></div>`
+    ).join('');
+  }
+
+  function escHtml(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  function restartAuth() {
+    clearInterval(pollInterval);
+    clearInterval(stateInterval);
+    clearInterval(timerInterval);
+    fetch('/api/auth/restart', { method: 'POST' }).finally(() => showScreen('login'));
+  }
+
+  // Boot into the right screen based on server-side state
+  showScreen(currentScreen);
+
+  // If we reload mid-flow, resume polling
+  if (currentScreen === 'waiting_auth') { startPolling(); startTimer(); }
+  if (currentScreen === 'initializing') { startStatePolling(); }
+</script>
+</body>
+</html>

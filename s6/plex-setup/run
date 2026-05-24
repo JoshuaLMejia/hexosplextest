@@ -1,0 +1,37 @@
+#!/usr/bin/with-contenv bash
+# cont-init.d/50-plex-claim-wait
+# Runs during container init (before services start) and blocks until the
+# setup sidecar writes the claim token to /tmp/plex-claim.
+# s6-overlay executes cont-init.d scripts sequentially; Plex does not start
+# until this script exits.
+
+SIGNAL_FILE="/tmp/plex-claim"
+TIMEOUT=600   # 10 minutes max wait
+ELAPSED=0
+INTERVAL=3
+
+echo "[plex-setup] Waiting for claim token from setup UI..."
+
+while [ ! -f "$SIGNAL_FILE" ]; do
+    if [ "$ELAPSED" -ge "$TIMEOUT" ]; then
+        echo "[plex-setup] Timed out waiting for claim token. Starting Plex without one."
+        exit 0
+    fi
+    sleep "$INTERVAL"
+    ELAPSED=$((ELAPSED + INTERVAL))
+done
+
+CLAIM_TOKEN="$(cat "$SIGNAL_FILE")"
+
+if [ -n "$CLAIM_TOKEN" ]; then
+    echo "[plex-setup] Claim token received. Injecting PLEX_CLAIM."
+    export PLEX_CLAIM="$CLAIM_TOKEN"
+    # Write to a file that the Plex init script can source, since environment
+    # variables set here are not automatically inherited by s6 services.
+    echo "PLEX_CLAIM=$CLAIM_TOKEN" >> /etc/cont-init.d/plex-claim-env
+    printf '%s' "$CLAIM_TOKEN" > /run/s6/container_environment/PLEX_CLAIM
+else
+    echo "[plex-setup] Signal file was empty. Starting Plex without claim token."
+fi
+
+exit 0
