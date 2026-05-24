@@ -18,11 +18,21 @@ PORT = int(os.environ.get("PLEX_SETUP_PORT", 32400))
 state = {
     "screen": "login",
     "pin_id": None,
+    "auth_token": None,
     "token_expires_at": None,
 }
 state_lock = threading.Lock()
 
 app = Flask(__name__, template_folder="/app/templates")
+
+
+@app.after_request
+def no_cache(resp):
+    # The initializing screen must not be cached — once Plex owns 32400 and
+    # the user reloads, they should land on Plex, not a stale copy of our UI.
+    resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    return resp
 
 
 @app.route("/identity")
@@ -41,7 +51,8 @@ def plex_web_redirect(subpath=""):
 def index():
     with state_lock:
         screen = state["screen"]
-    return render_template("index.html", screen=screen)
+        auth_token = state["auth_token"] or ""
+    return render_template("index.html", screen=screen, auth_token=auth_token)
 
 
 @app.route("/api/state")
@@ -126,12 +137,13 @@ def auth_poll():
 
         with state_lock:
             state["screen"] = "initializing"
+            state["auth_token"] = auth_token
 
         # Write signal file — the s6 init script is polling for this
         with open(SIGNAL_FILE, "w") as f:
             f.write(claim_token)
 
-        return jsonify({"ok": True, "done": True})
+        return jsonify({"ok": True, "done": True, "auth_token": auth_token})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 
@@ -141,6 +153,7 @@ def auth_restart():
     with state_lock:
         state["screen"] = "login"
         state["pin_id"] = None
+        state["auth_token"] = None
         state["token_expires_at"] = None
     return jsonify({"ok": True})
 

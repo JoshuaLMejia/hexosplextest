@@ -3,6 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
   <title>HexOS Plex Setup</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -53,12 +55,7 @@
       font-size: 28px;
     }
 
-    h1 {
-      font-size: 22px;
-      font-weight: 600;
-      margin-bottom: 8px;
-      letter-spacing: -0.3px;
-    }
+    h1 { font-size: 22px; font-weight: 600; margin-bottom: 8px; letter-spacing: -0.3px; }
 
     .subtitle {
       color: var(--muted);
@@ -84,7 +81,6 @@
       transition: background 0.15s;
       width: 100%;
     }
-
     .btn:hover { background: var(--accent-hover); }
     .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
@@ -97,7 +93,6 @@
     }
     .btn-secondary:hover { background: var(--border); color: var(--text); }
 
-    /* Waiting for auth screen */
     .waiting-hint {
       background: #1f1f1f;
       border: 1px solid var(--border);
@@ -110,14 +105,9 @@
       text-align: left;
     }
 
-    .timer {
-      font-size: 13px;
-      color: var(--muted);
-      margin-top: 16px;
-    }
+    .timer { font-size: 13px; color: var(--muted); margin-top: 16px; }
     .timer.urgent { color: var(--error); }
 
-    /* Spinner */
     .spinner {
       width: 32px;
       height: 32px;
@@ -129,52 +119,81 @@
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    /* Log stream */
-    .log-box {
-      background: #111;
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 12px 14px;
-      font-family: "SF Mono", "Fira Code", monospace;
-      font-size: 12px;
-      line-height: 1.7;
+    /* Checklist */
+    .checklist {
       text-align: left;
-      max-height: 220px;
-      overflow-y: auto;
-      margin-bottom: 24px;
-      color: #ccc;
+      margin: 28px 0 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
     }
 
-    .log-line { display: flex; gap: 10px; }
-    .log-time { color: var(--muted); flex-shrink: 0; }
-    .log-msg { word-break: break-word; }
+    .check-item {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      font-size: 15px;
+      color: var(--muted);
+      transition: color 0.3s;
+    }
 
-    /* Done screen */
-    .check {
-      width: 56px;
-      height: 56px;
-      margin: 0 auto 24px;
-      background: rgba(80, 200, 120, 0.15);
-      border: 2px solid var(--success);
+    .check-item.done { color: var(--text); }
+
+    .check-circle {
+      width: 24px;
+      height: 24px;
       border-radius: 50%;
+      flex-shrink: 0;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 24px;
+      position: relative;
     }
 
-    /* Error screen */
-    .error-box {
+    /* Pending: outlined circle with spinning indicator */
+    .check-item:not(.done) .check-circle {
+      border: 3px solid var(--border);
+      border-top-color: var(--muted);
+      animation: spin 1s linear infinite;
+    }
+
+    /* Pass: solid green with checkmark */
+    .check-item.done .check-circle {
+      border: none;
+      background: var(--success);
+      animation: none;
+    }
+    .check-item.done .check-circle::after {
+      content: "";
+      position: absolute;
+      width: 6px;
+      height: 11px;
+      border-right: 2px solid #0f0f0f;
+      border-bottom: 2px solid #0f0f0f;
+      transform: translateY(-1px) rotate(45deg);
+    }
+
+    .final-msg {
+      font-size: 14px;
+      color: var(--success);
+      margin-top: 24px;
+      min-height: 20px;
+    }
+
+    .error-state {
       background: rgba(224, 80, 80, 0.1);
       border: 1px solid var(--error);
       border-radius: 8px;
-      padding: 14px;
-      font-size: 13px;
-      color: var(--error);
-      margin-bottom: 24px;
+      padding: 18px;
+      font-size: 14px;
+      color: var(--text);
+      margin: 24px 0 16px;
       text-align: left;
-      word-break: break-word;
+      line-height: 1.5;
     }
+    .error-state strong { color: var(--error); display: block; margin-bottom: 6px; }
+
+    .hidden { display: none !important; }
 
     .screen { display: none; }
     .screen.active { display: block; }
@@ -207,43 +226,61 @@
 
   <!-- INITIALIZING SCREEN -->
   <div id="screen-initializing" class="screen">
-    <div class="spinner"></div>
+    <div class="logo">▶</div>
     <h1>Setting up your server</h1>
-    <p class="subtitle" style="margin-bottom: 20px;">This takes about a minute. Don't close this tab.</p>
-    <div class="log-box" id="log-box"></div>
-  </div>
+    <p class="subtitle">This takes about a minute. Don't close this tab.</p>
 
-  <!-- DONE SCREEN -->
-  <div id="screen-done" class="screen">
-    <div class="check">✓</div>
-    <h1>Plex is ready</h1>
-    <p class="subtitle">Your server is set up, your account is linked, and your media libraries have been created.</p>
-    <a class="btn" id="plex-link" href="/web" target="_blank">Open Plex</a>
-  </div>
+    <div id="progress-section">
+      <div class="checklist">
+        <div class="check-item" id="step-plex">
+          <div class="check-circle"></div>
+          <span>Plex started</span>
+        </div>
+        <div class="check-item" id="step-prefs">
+          <div class="check-circle"></div>
+          <span>Preferences applied</span>
+        </div>
+        <div class="check-item" id="step-libs">
+          <div class="check-circle"></div>
+          <span>Libraries created</span>
+        </div>
+      </div>
+      <div class="final-msg" id="final-msg"></div>
+    </div>
 
-  <!-- ERROR SCREEN -->
-  <div id="screen-error" class="screen">
-    <div class="logo" style="background: var(--error);">!</div>
-    <h1>Setup encountered an error</h1>
-    <div class="error-box" id="error-msg"></div>
-    <p class="subtitle">Plex is still running. You can complete setup manually at port 32400.</p>
-    <button class="btn btn-secondary" onclick="restartAuth()">Try again</button>
+    <div id="error-section" class="hidden">
+      <div class="error-state">
+        <strong>Preconfiguration error</strong>
+        Please proceed to Plex for manual setup.
+      </div>
+      <a class="btn" href="/web">Open Plex</a>
+    </div>
   </div>
 
 </div>
 
 <script>
-  let currentScreen = '{{ screen }}';
-  let pollInterval = null;
-  let stateInterval = null;
+  // Server-injected values
+  const initialScreen = '{{ screen }}';
+  const authToken = '{{ auth_token }}';
+
+  // Polling state
+  let authPollInterval = null;
   let timerInterval = null;
+  let plexPollInterval = null;
+  let timeoutHandle = null;
+  let redirectHandle = null;
+
+  const checkState = { plex: false, prefs: false, libs: false };
+  const TIMEOUT_MS = 180000; // 180s fallback
 
   function showScreen(name) {
     document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
     const el = document.getElementById('screen-' + name);
     if (el) el.classList.add('active');
-    currentScreen = name;
   }
+
+  // ---- LOGIN / OAUTH PHASE ----
 
   function startAuth() {
     const btn = document.getElementById('btn-signin');
@@ -256,7 +293,7 @@
         if (!data.ok) throw new Error(data.error || 'Failed to start auth');
         window.open(data.auth_url, '_blank');
         showScreen('waiting_auth');
-        startPolling();
+        startAuthPolling();
         startTimer();
       })
       .catch(err => {
@@ -266,49 +303,47 @@
       });
   }
 
-  function startPolling() {
-    if (pollInterval) clearInterval(pollInterval);
-    pollInterval = setInterval(() => {
-      fetch('/api/auth/poll')
+  // Polls Flask's /api/auth/poll. Two ways to transition forward:
+  //   Case A: response { done: true }
+  //   Case B: fetch throws — Flask only dies after writing the signal file,
+  //           so a dead Flask post-OAuth means OAuth must have succeeded
+  function startAuthPolling() {
+    if (authPollInterval) clearInterval(authPollInterval);
+    authPollInterval = setInterval(() => {
+      fetch('/api/auth/poll', { cache: 'no-store' })
         .then(r => r.json())
         .then(data => {
           if (data.done) {
-            clearInterval(pollInterval);
-            clearInterval(timerInterval);
-            showScreen('initializing');
-            startStatePolling();
+            handoffToInitializing(data.auth_token);
           }
         })
-        .catch(() => {});
+        .catch(() => {
+          // Case B: Flask is unreachable. Treat as success.
+          handoffToInitializing(null);
+        });
     }, 2000);
   }
 
-  function startStatePolling() {
-    if (stateInterval) clearInterval(stateInterval);
-    stateInterval = setInterval(() => {
-      fetch('/api/state')
-        .then(r => r.json())
-        .then(data => {
-          renderLogs(data.logs);
-          if (data.screen === 'done') {
-            clearInterval(stateInterval);
-            showScreen('done');
-          } else if (data.screen === 'error') {
-            clearInterval(stateInterval);
-            const errEl = document.getElementById('error-msg');
-            if (errEl) errEl.textContent = data.error || 'Unknown error';
-            showScreen('error');
-          }
-        })
-        .catch(() => {});
-    }, 2000);
+  function handoffToInitializing(serverAuthToken) {
+    // Stop all Flask-side polling — Flask is dying or dead from here on
+    if (authPollInterval) { clearInterval(authPollInterval); authPollInterval = null; }
+    if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+
+    // Prefer the token from this response if we got one; otherwise fall back
+    // to the one already embedded in the page (from a prior /api/state load)
+    if (serverAuthToken) window._authToken = serverAuthToken;
+    else window._authToken = authToken;
+
+    showScreen('initializing');
+    startPlexPolling();
+    startTimeout();
   }
 
   function startTimer() {
     const el = document.getElementById('token-timer');
     if (timerInterval) clearInterval(timerInterval);
     timerInterval = setInterval(() => {
-      fetch('/api/state')
+      fetch('/api/state', { cache: 'no-store' })
         .then(r => r.json())
         .then(data => {
           if (data.expires_in === null || data.expires_in === undefined) return;
@@ -327,31 +362,125 @@
     }, 1000);
   }
 
-  function renderLogs(logs) {
-    const box = document.getElementById('log-box');
-    if (!box) return;
-    box.innerHTML = logs.map(l =>
-      `<div class="log-line"><span class="log-time">${l.time}</span><span class="log-msg">${escHtml(l.message)}</span></div>`
-    ).join('');
-  }
-
-  function escHtml(s) {
-    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  }
-
   function restartAuth() {
-    clearInterval(pollInterval);
-    clearInterval(stateInterval);
-    clearInterval(timerInterval);
+    if (authPollInterval) { clearInterval(authPollInterval); authPollInterval = null; }
+    if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
     fetch('/api/auth/restart', { method: 'POST' }).finally(() => showScreen('login'));
   }
 
-  // Boot into the right screen based on server-side state
-  showScreen(currentScreen);
+  // ---- INITIALIZING PHASE — POLL PLEX DIRECTLY ----
 
-  // If we reload mid-flow, resume polling
-  if (currentScreen === 'waiting_auth') { startPolling(); startTimer(); }
-  if (currentScreen === 'initializing') { startStatePolling(); }
+  function startPlexPolling() {
+    if (plexPollInterval) clearInterval(plexPollInterval);
+    // Run one cycle immediately so the user doesn't wait 2s for the first attempt
+    runChecks();
+    plexPollInterval = setInterval(runChecks, 2000);
+  }
+
+  async function runChecks() {
+    // Each check runs in parallel; once one passes we stop re-checking it
+    await Promise.all([
+      checkState.plex ? null : checkPlex(),
+      checkState.prefs ? null : checkPrefs(),
+      checkState.libs ? null : checkLibs(),
+    ]);
+
+    renderChecks();
+
+    if (checkState.plex && checkState.prefs && checkState.libs) {
+      completeAndRedirect();
+    }
+  }
+
+  async function checkPlex() {
+    try {
+      const r = await fetch('/identity', {
+        headers: { 'Accept': 'application/json' },
+        cache: 'no-store',
+      });
+      if (!r.ok) return;
+      const data = await r.json();
+      const id = data && data.MediaContainer && data.MediaContainer.machineIdentifier;
+      // Filter out Flask's stub which returns machineIdentifier="setup"
+      if (id && id !== 'setup') checkState.plex = true;
+    } catch (e) {
+      // ECONNREFUSED during Flask→Plex handoff is expected — silently retry
+    }
+  }
+
+  async function checkPrefs() {
+    if (!window._authToken) return;
+    try {
+      const r = await fetch('/:/prefs?X-Plex-Token=' + encodeURIComponent(window._authToken), {
+        cache: 'no-store',
+      });
+      if (!r.ok) return;
+      const text = await r.text();
+      // Plex returns XML; look for AcceptedEULA="1" attribute
+      if (/AcceptedEULA="1"/.test(text)) checkState.prefs = true;
+    } catch (e) {
+      // expected during handoff
+    }
+  }
+
+  async function checkLibs() {
+    if (!window._authToken) return;
+    try {
+      const r = await fetch('/library/sections?X-Plex-Token=' + encodeURIComponent(window._authToken), {
+        headers: { 'Accept': 'application/json' },
+        cache: 'no-store',
+      });
+      if (!r.ok) return;
+      const data = await r.json();
+      const size = data && data.MediaContainer && data.MediaContainer.size;
+      if (typeof size === 'number' && size >= 2) checkState.libs = true;
+    } catch (e) {
+      // expected during handoff
+    }
+  }
+
+  function renderChecks() {
+    document.getElementById('step-plex').classList.toggle('done', checkState.plex);
+    document.getElementById('step-prefs').classList.toggle('done', checkState.prefs);
+    document.getElementById('step-libs').classList.toggle('done', checkState.libs);
+  }
+
+  function completeAndRedirect() {
+    if (plexPollInterval) { clearInterval(plexPollInterval); plexPollInterval = null; }
+    if (timeoutHandle) { clearTimeout(timeoutHandle); timeoutHandle = null; }
+    document.getElementById('final-msg').textContent = 'Setup complete, redirecting to Plex...';
+    if (redirectHandle) clearTimeout(redirectHandle);
+    redirectHandle = setTimeout(() => {
+      window.location.href = '/web';
+    }, 3000);
+  }
+
+  function startTimeout() {
+    if (timeoutHandle) clearTimeout(timeoutHandle);
+    timeoutHandle = setTimeout(() => {
+      // Stop all polling
+      if (plexPollInterval) { clearInterval(plexPollInterval); plexPollInterval = null; }
+      // Hide progress, show error
+      document.getElementById('progress-section').classList.add('hidden');
+      document.getElementById('error-section').classList.remove('hidden');
+    }, TIMEOUT_MS);
+  }
+
+  // ---- BOOT ----
+
+  showScreen(initialScreen);
+
+  if (initialScreen === 'waiting_auth') {
+    startAuthPolling();
+    startTimer();
+  }
+
+  if (initialScreen === 'initializing') {
+    // Page was reloaded mid-setup. Pick up the auth_token from server injection.
+    window._authToken = authToken;
+    startPlexPolling();
+    startTimeout();
+  }
 </script>
 </body>
 </html>
