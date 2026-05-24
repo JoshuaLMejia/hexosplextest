@@ -44,6 +44,11 @@ def _add_log(msg: str):
 # Routes
 # ---------------------------------------------------------------------------
 
+@app.route("/identity")
+def identity():
+    return jsonify({"MediaContainer": {"machineIdentifier": "setup", "version": "setup"}})
+
+
 @app.route("/")
 def index():
     with state_lock:
