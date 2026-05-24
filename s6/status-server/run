@@ -1,2 +1,0 @@
-#!/usr/bin/with-contenv bash
-exec /opt/setup-venv/bin/python /app/status_server.py

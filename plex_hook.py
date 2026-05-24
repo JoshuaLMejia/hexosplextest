@@ -1,4 +1,3 @@
-import json
 import re
 import time
 import requests
@@ -6,15 +5,6 @@ from hexos_hooks import HookContext
 
 PLEX_URL = "http://localhost:32400"
 PREFS_PATH = "/config/Library/Application Support/Plex Media Server/Preferences.xml"
-STATUS_FILE = "/tmp/plex-status.json"
-
-STEPS = ["starting", "preferences", "libraries", "complete"]
-
-
-def _write_status(done_steps: list):
-    payload = {s: (s in done_steps) for s in STEPS}
-    with open(STATUS_FILE, "w") as f:
-        json.dump({"steps": payload}, f)
 
 LIBRARIES = [
     {
@@ -35,27 +25,13 @@ LIBRARIES = [
 
 
 def after_install(ctx: HookContext):
-    done = []
-    _write_status(done)
-
     token = _wait_for_token(ctx)
     if not token:
         raise RuntimeError("PlexOnlineToken not found in Preferences.xml.")
 
     _wait_for_ready(ctx)
-    done.append("starting")
-    _write_status(done)
-
     _set_preferences(token, ctx)
-    done.append("preferences")
-    _write_status(done)
-
     _create_libraries(token, ctx)
-    done.append("libraries")
-    _write_status(done)
-
-    done.append("complete")
-    _write_status(done)
     ctx.log("Setup complete.")
 
 

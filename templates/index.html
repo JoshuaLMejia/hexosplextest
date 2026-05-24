@@ -53,7 +53,12 @@
       font-size: 28px;
     }
 
-    h1 { font-size: 22px; font-weight: 600; margin-bottom: 8px; letter-spacing: -0.3px; }
+    h1 {
+      font-size: 22px;
+      font-weight: 600;
+      margin-bottom: 8px;
+      letter-spacing: -0.3px;
+    }
 
     .subtitle {
       color: var(--muted);
@@ -79,6 +84,7 @@
       transition: background 0.15s;
       width: 100%;
     }
+
     .btn:hover { background: var(--accent-hover); }
     .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
@@ -91,6 +97,7 @@
     }
     .btn-secondary:hover { background: var(--border); color: var(--text); }
 
+    /* Waiting for auth screen */
     .waiting-hint {
       background: #1f1f1f;
       border: 1px solid var(--border);
@@ -103,9 +110,14 @@
       text-align: left;
     }
 
-    .timer { font-size: 13px; color: var(--muted); margin-top: 16px; }
+    .timer {
+      font-size: 13px;
+      color: var(--muted);
+      margin-top: 16px;
+    }
     .timer.urgent { color: var(--error); }
 
+    /* Spinner */
     .spinner {
       width: 32px;
       height: 32px;
@@ -117,66 +129,41 @@
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    /* Checklist */
-    .checklist {
+    /* Log stream */
+    .log-box {
+      background: #111;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 14px;
+      font-family: "SF Mono", "Fira Code", monospace;
+      font-size: 12px;
+      line-height: 1.7;
       text-align: left;
-      margin: 28px 0 8px;
-      display: flex;
-      flex-direction: column;
-      gap: 14px;
+      max-height: 220px;
+      overflow-y: auto;
+      margin-bottom: 24px;
+      color: #ccc;
     }
 
-    .check-item {
-      display: flex;
-      align-items: center;
-      gap: 14px;
-      font-size: 15px;
-      color: var(--muted);
-      transition: color 0.3s;
-    }
+    .log-line { display: flex; gap: 10px; }
+    .log-time { color: var(--muted); flex-shrink: 0; }
+    .log-msg { word-break: break-word; }
 
-    .check-item.done { color: var(--text); }
-
-    .check-circle {
-      width: 22px;
-      height: 22px;
+    /* Done screen */
+    .check {
+      width: 56px;
+      height: 56px;
+      margin: 0 auto 24px;
+      background: rgba(80, 200, 120, 0.15);
+      border: 2px solid var(--success);
       border-radius: 50%;
-      border: 2px solid var(--border);
-      flex-shrink: 0;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 12px;
-      transition: border-color 0.3s, background 0.3s;
+      font-size: 24px;
     }
 
-    .check-item.done .check-circle {
-      border-color: var(--success);
-      background: rgba(80, 200, 120, 0.15);
-      color: var(--success);
-    }
-
-    .check-item.active .check-circle {
-      border-color: var(--accent);
-    }
-
-    .check-item.active .check-spinner {
-      width: 10px;
-      height: 10px;
-      border: 2px solid var(--border);
-      border-top-color: var(--accent);
-      border-radius: 50%;
-      animation: spin 0.8s linear infinite;
-    }
-
-    .redirect-msg {
-      font-size: 13px;
-      color: var(--muted);
-      margin-top: 20px;
-      min-height: 20px;
-      transition: opacity 0.3s;
-    }
-
+    /* Error screen */
     .error-box {
       background: rgba(224, 80, 80, 0.1);
       border: 1px solid var(--error);
@@ -220,28 +207,18 @@
 
   <!-- INITIALIZING SCREEN -->
   <div id="screen-initializing" class="screen">
-    <div class="logo">▶</div>
+    <div class="spinner"></div>
     <h1>Setting up your server</h1>
-    <p class="subtitle">This takes about a minute. Don't close this tab.</p>
-    <div class="checklist">
-      <div class="check-item" id="step-starting">
-        <div class="check-circle"><span class="check-spinner"></span></div>
-        <span>Plex server starting</span>
-      </div>
-      <div class="check-item" id="step-preferences">
-        <div class="check-circle"><span class="check-spinner"></span></div>
-        <span>Applying preferences</span>
-      </div>
-      <div class="check-item" id="step-libraries">
-        <div class="check-circle"><span class="check-spinner"></span></div>
-        <span>Creating media libraries</span>
-      </div>
-      <div class="check-item" id="step-complete">
-        <div class="check-circle"><span class="check-spinner"></span></div>
-        <span>Setup complete</span>
-      </div>
-    </div>
-    <div class="redirect-msg" id="redirect-msg"></div>
+    <p class="subtitle" style="margin-bottom: 20px;">This takes about a minute. Don't close this tab.</p>
+    <div class="log-box" id="log-box"></div>
+  </div>
+
+  <!-- DONE SCREEN -->
+  <div id="screen-done" class="screen">
+    <div class="check">✓</div>
+    <h1>Plex is ready</h1>
+    <p class="subtitle">Your server is set up, your account is linked, and your media libraries have been created.</p>
+    <a class="btn" id="plex-link" href="/web" target="_blank">Open Plex</a>
   </div>
 
   <!-- ERROR SCREEN -->
@@ -258,18 +235,8 @@
 <script>
   let currentScreen = '{{ screen }}';
   let pollInterval = null;
-  let statusInterval = null;
+  let stateInterval = null;
   let timerInterval = null;
-  let redirectCountdown = null;
-
-  const STEPS = ['starting', 'preferences', 'libraries', 'complete'];
-
-  const STEP_LABELS = {
-    starting: 'Plex server starting',
-    preferences: 'Applying preferences',
-    libraries: 'Creating media libraries',
-    complete: 'Setup complete',
-  };
 
   function showScreen(name) {
     document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
@@ -309,65 +276,32 @@
             clearInterval(pollInterval);
             clearInterval(timerInterval);
             showScreen('initializing');
-            startStatusPolling();
+            startStatePolling();
           }
         })
         .catch(() => {});
     }, 2000);
   }
 
-  function startStatusPolling() {
-    if (statusInterval) clearInterval(statusInterval);
-    statusInterval = setInterval(() => {
-      fetch('http://' + location.hostname + ':8765/status')
+  function startStatePolling() {
+    if (stateInterval) clearInterval(stateInterval);
+    stateInterval = setInterval(() => {
+      fetch('/api/state')
         .then(r => r.json())
         .then(data => {
-          const steps = data.steps || {};
-          renderSteps(steps);
-          if (steps.complete) {
-            clearInterval(statusInterval);
-            beginRedirect();
+          renderLogs(data.logs);
+          if (data.screen === 'done') {
+            clearInterval(stateInterval);
+            showScreen('done');
+          } else if (data.screen === 'error') {
+            clearInterval(stateInterval);
+            const errEl = document.getElementById('error-msg');
+            if (errEl) errEl.textContent = data.error || 'Unknown error';
+            showScreen('error');
           }
         })
         .catch(() => {});
-    }, 1500);
-  }
-
-  function renderSteps(steps) {
-    // Find the first incomplete step — that one gets the active spinner
-    let foundActive = false;
-    STEPS.forEach(key => {
-      const el = document.getElementById('step-' + key);
-      if (!el) return;
-      const circle = el.querySelector('.check-circle');
-      if (steps[key]) {
-        el.className = 'check-item done';
-        circle.innerHTML = '✓';
-      } else if (!foundActive) {
-        foundActive = true;
-        el.className = 'check-item active';
-        circle.innerHTML = '<span class="check-spinner"></span>';
-      } else {
-        el.className = 'check-item';
-        circle.innerHTML = '<span class="check-spinner"></span>';
-      }
-    });
-  }
-
-  function beginRedirect() {
-    const msg = document.getElementById('redirect-msg');
-    let secs = 3;
-    msg.textContent = `Redirecting to Plex in ${secs}...`;
-    redirectCountdown = setInterval(() => {
-      secs--;
-      if (secs <= 0) {
-        clearInterval(redirectCountdown);
-        msg.textContent = 'Redirecting...';
-        window.location.href = '/web';
-      } else {
-        msg.textContent = `Redirecting to Plex in ${secs}...`;
-      }
-    }, 1000);
+    }, 2000);
   }
 
   function startTimer() {
@@ -393,17 +327,31 @@
     }, 1000);
   }
 
+  function renderLogs(logs) {
+    const box = document.getElementById('log-box');
+    if (!box) return;
+    box.innerHTML = logs.map(l =>
+      `<div class="log-line"><span class="log-time">${l.time}</span><span class="log-msg">${escHtml(l.message)}</span></div>`
+    ).join('');
+  }
+
+  function escHtml(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
   function restartAuth() {
     clearInterval(pollInterval);
-    clearInterval(statusInterval);
+    clearInterval(stateInterval);
     clearInterval(timerInterval);
-    clearInterval(redirectCountdown);
     fetch('/api/auth/restart', { method: 'POST' }).finally(() => showScreen('login'));
   }
 
+  // Boot into the right screen based on server-side state
   showScreen(currentScreen);
+
+  // If we reload mid-flow, resume polling
   if (currentScreen === 'waiting_auth') { startPolling(); startTimer(); }
-  if (currentScreen === 'initializing') { startStatusPolling(); }
+  if (currentScreen === 'initializing') { startStatePolling(); }
 </script>
 </body>
 </html>
