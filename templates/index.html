@@ -416,12 +416,16 @@
       });
       if (!r.ok) return;
       const text = await r.text();
-      // Plex /:/prefs returns <Setting id="AcceptedEULA" ... value="1" />
-      // Attribute order isn't guaranteed, so match either id-then-value or value-then-id
-      const eulaSet =
-        /<Setting[^>]*id="AcceptedEULA"[^>]*value="1"/.test(text) ||
-        /<Setting[^>]*value="1"[^>]*id="AcceptedEULA"/.test(text);
-      if (eulaSet) checkState.prefs = true;
+      // Plex /:/prefs returns <Setting id="..." ... value="..." />
+      // Attribute order isn't guaranteed, so match either direction
+      const settingHas = (id, expected) =>
+        new RegExp(`<Setting[^>]*id="${id}"[^>]*value="${expected}"`).test(text) ||
+        new RegExp(`<Setting[^>]*value="${expected}"[^>]*id="${id}"`).test(text);
+
+      const eulaSet = settingHas("AcceptedEULA", "1");
+      const publishSet = settingHas("PublishServerOnPlexOnlineKey", "1");
+      const friendlyNameSet = settingHas("FriendlyName", "HexOS Plex");
+      if (eulaSet && publishSet && friendlyNameSet) checkState.prefs = true;
     } catch (e) {
       // expected during handoff
     }
