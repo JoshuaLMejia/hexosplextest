@@ -9,7 +9,8 @@
       "Bash(docker manifest inspect *)",
       "Bash(git add *)",
       "Bash(git commit *)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "WebFetch(domain:raw.githubusercontent.com)"
     ]
   }
 }

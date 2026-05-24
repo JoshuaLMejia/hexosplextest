@@ -1,9 +1,0 @@
-#!/usr/bin/with-contenv bash
-# services.d/setup-server/run
-# s6-overlay service: runs the Flask setup sidecar.
-# s6 supervises this and restarts it on crash.
-# Once setup is complete the process stays running (serving the "done" screen)
-# until the container is stopped.
-
-cd /app
-exec /opt/setup-venv/bin/python setup_server.py

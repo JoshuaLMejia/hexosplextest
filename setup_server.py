@@ -17,7 +17,7 @@ import plex_hook
 PLEX_URL = "http://localhost:32400"
 SIGNAL_FILE = "/tmp/plex-claim"
 CLIENT_ID = str(uuid.uuid4())
-PORT = int(os.environ.get("PLEX_SETUP_PORT", 7070))
+PORT = int(os.environ.get("PLEX_SETUP_PORT", 32400))
 
 # State machine values: "login" | "waiting_auth" | "initializing" | "done" | "error"
 state = {

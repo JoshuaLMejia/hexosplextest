@@ -1,3 +1,0 @@
-#!/usr/bin/with-contenv bash
-# Tell s6 not to restart this service after it exits normally.
-exit 0
