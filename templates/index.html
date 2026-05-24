@@ -273,8 +273,8 @@
   <!-- INITIALIZING SCREEN -->
   <div id="screen-initializing" class="screen">
     <div class="logo"><img src="/static/hexostextlogo.svg" alt="HexOS"></div>
-    <h1>Setting up your server</h1>
-    <p class="subtitle">This takes about a minute. Don't close this tab.</p>
+    <h1>Setting up your Plex server</h1>
+    <p class="subtitle">This takes 1-2 minutes. Don't close this tab.</p>
 
     <div id="progress-section">
       <div class="checklist">
@@ -502,7 +502,7 @@
   function completeAndRedirect() {
     if (plexPollInterval) { clearInterval(plexPollInterval); plexPollInterval = null; }
     if (timeoutHandle) { clearTimeout(timeoutHandle); timeoutHandle = null; }
-    document.getElementById('final-msg').textContent = 'Setup complete, redirecting to Plex...';
+    document.getElementById('final-msg').textContent = 'Setup complete, launching Plex...';
     if (redirectHandle) clearTimeout(redirectHandle);
     redirectHandle = setTimeout(() => {
       window.location.href = '/web';
