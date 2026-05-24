@@ -162,12 +162,9 @@ def auth_poll():
             state["claim_token"] = claim_token
             state["screen"] = "initializing"
 
-        # Write the signal file — s6 run script sees this and starts Plex
-        with open(SIGNAL_FILE, "w") as f:
-            f.write(claim_token)
-
-        # Run the post-install hook in the background (waits for Plex to be ready first)
-        threading.Thread(target=_run_post_install, daemon=True).start()
+        # Start background thread — writes signal file after a delay so Flask
+        # finishes responding to this request before s6 kills the process
+        threading.Thread(target=_signal_and_run, args=(claim_token,), daemon=True).start()
 
         return jsonify({"ok": True, "done": True})
     except Exception as e:
@@ -191,6 +188,16 @@ def auth_restart():
 # ---------------------------------------------------------------------------
 # Post-install hook runner
 # ---------------------------------------------------------------------------
+
+def _signal_and_run(claim_token: str):
+    # Wait long enough for the poll response to reach the browser and for
+    # the initializing screen to render before s6 kills Flask
+    time.sleep(8)
+    with open(SIGNAL_FILE, "w") as f:
+        f.write(claim_token)
+    # _run_post_install will wait for Plex to actually be up before doing anything
+    _run_post_install()
+
 
 def _run_post_install():
     _add_log("Plex is starting up...")
