@@ -49,6 +49,14 @@ def identity():
     return jsonify({"MediaContainer": {"machineIdentifier": "setup", "version": "setup"}})
 
 
+@app.route("/web")
+@app.route("/web/")
+@app.route("/web/<path:subpath>")
+def plex_web_redirect(subpath=""):
+    from flask import redirect
+    return redirect("/")
+
+
 @app.route("/")
 def index():
     with state_lock:
