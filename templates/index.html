@@ -96,9 +96,15 @@
 
     .subtitle {
       color: var(--muted);
-      font-size: 14px;
-      line-height: 1.5;
+      font-size: 15px;
+      line-height: 1.55;
       margin-bottom: 32px;
+    }
+    .fine-print {
+      display: block;
+      margin-top: 12px;
+      font-size: 13px;
+      opacity: 0.75;
     }
 
     .btn {
@@ -243,7 +249,10 @@
   <div id="screen-login" class="screen">
     <div class="logo"><img src="/static/hexostextlogo.svg" alt="HexOS"></div>
     <h1>Set up Plex</h1>
-    <p class="subtitle">Sign in to your Plex account to claim this server and create your media libraries automatically.</p>
+    <p class="subtitle">
+      Sign in to your Plex account to claim this server and create your media libraries automatically.
+      <span class="fine-print">Your sign-in credentials are handled only by Plex.</span>
+    </p>
     <button class="btn" id="btn-signin" onclick="startAuth()">Sign in with Plex</button>
   </div>
 
