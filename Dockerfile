@@ -9,6 +9,7 @@ RUN apt-get update && \
 COPY hexos_hooks.py /app/hexos_hooks.py
 COPY plex_hook.py /app/plex_hook.py
 COPY setup_server.py /app/setup_server.py
+COPY status_server.py /app/status_server.py
 COPY templates/ /app/templates/
 
 # Runs before 40-plex-first-run — serves setup UI, gets claim token, injects PLEX_CLAIM
@@ -23,5 +24,9 @@ RUN chmod +x /etc/services.d/plex/run
 COPY s6/plex-hook/run /etc/services.d/plex-hook/run
 COPY s6/plex-hook/finish /etc/services.d/plex-hook/finish
 RUN chmod +x /etc/services.d/plex-hook/run /etc/services.d/plex-hook/finish
+
+# Internal status server — polled by the setup UI for checkbox progress
+COPY s6/status-server/run /etc/services.d/status-server/run
+RUN chmod +x /etc/services.d/status-server/run
 
 EXPOSE 32400
