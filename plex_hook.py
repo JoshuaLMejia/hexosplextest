@@ -25,39 +25,36 @@ LIBRARIES = [
 
 
 def after_install(ctx: HookContext):
-    container_name = ctx.container_name or "ix-plex-plex-1"
+    # Give the s6 script time to kill Flask and let Plex bind to 32400
+    ctx.log("Waiting for Plex to start up...")
+    time.sleep(10)
 
-    token = _wait_for_token(ctx, container_name)
+    token = _wait_for_token(ctx)
     if not token:
-        raise RuntimeError("PlexOnlineToken missing. Did the container start?")
+        raise RuntimeError("PlexOnlineToken missing. Did Plex start correctly?")
 
     _wait_for_ready(ctx)
-
-    # Prime the API before making calls — Plex quirk on first boot
-    try:
-        requests.get(f"{PLEX_URL}/identity", timeout=5)
-    except requests.RequestException:
-        pass
-
-    time.sleep(5)
     _set_preferences(token, ctx)
     _create_libraries(token, ctx)
     ctx.log("Setup complete.")
 
 
 def _wait_for_ready(ctx: HookContext):
+    ctx.log("Waiting for Plex to start...")
     interval = 5.0
-    for attempt in range(1, 25):
+    for attempt in range(1, 40):
         try:
             resp = requests.get(f"{PLEX_URL}/identity", timeout=5)
-            if resp.status_code == 200 and "machineIdentifier" in resp.text:
-                ctx.log("Plex API is ready.")
-                return
+            if resp.status_code == 200:
+                # Reject our own Flask stub — it returns {"MediaContainer": {"machineIdentifier": "setup"}}
+                # Real Plex returns a much longer identifier and includes "size" and "claimed" fields
+                data = resp.json()
+                machine_id = data.get("MediaContainer", {}).get("machineIdentifier", "")
+                if machine_id and machine_id != "setup":
+                    ctx.log("Plex API is ready.")
+                    return
         except requests.RequestException:
             pass
-
-        if attempt == 1:
-            ctx.log("Waiting for Plex web server to spin up...")
 
         time.sleep(interval)
         interval = min(interval + 2.0, 15.0)
@@ -65,7 +62,7 @@ def _wait_for_ready(ctx: HookContext):
     raise RuntimeError("Plex API did not become ready after waiting.")
 
 
-def _wait_for_token(ctx: HookContext, container_name: str):
+def _wait_for_token(ctx: HookContext):
     # We're running inside the container — read Preferences.xml directly
     for attempt in range(1, 21):
         try:

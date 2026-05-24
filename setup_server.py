@@ -46,7 +46,9 @@ def _add_log(msg: str):
 
 @app.route("/identity")
 def identity():
-    return jsonify({"MediaContainer": {"machineIdentifier": "setup", "version": "setup"}})
+    # Returns a stub so TrueNAS health checks pass during setup.
+    # machineIdentifier="setup" is checked by plex_hook.py to know Flask is still running.
+    return jsonify({"MediaContainer": {"machineIdentifier": "setup", "version": "setup", "size": 0}})
 
 
 @app.route("/web")
