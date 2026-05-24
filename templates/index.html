@@ -44,15 +44,16 @@
     }
 
     .logo {
-      width: 56px;
-      height: 56px;
-      margin: 0 auto 24px;
-      background: var(--accent);
-      border-radius: 12px;
+      height: 48px;
+      margin: 0 auto 28px;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 28px;
+    }
+    .logo img {
+      height: 100%;
+      width: auto;
+      display: block;
     }
 
     h1 { font-size: 22px; font-weight: 600; margin-bottom: 8px; letter-spacing: -0.3px; }
@@ -204,7 +205,7 @@
 
   <!-- LOGIN SCREEN -->
   <div id="screen-login" class="screen">
-    <div class="logo">▶</div>
+    <div class="logo"><img src="/static/hexos.svg" alt="HexOS"></div>
     <h1>Set up Plex</h1>
     <p class="subtitle">Sign in to your Plex account to claim this server and create your media libraries automatically.</p>
     <button class="btn" id="btn-signin" onclick="startAuth()">Sign in with Plex</button>
@@ -212,7 +213,7 @@
 
   <!-- WAITING FOR AUTH SCREEN -->
   <div id="screen-waiting_auth" class="screen">
-    <div class="logo">▶</div>
+    <div class="logo"><img src="/static/hexos.svg" alt="HexOS"></div>
     <h1>Complete sign-in</h1>
     <div class="waiting-hint">
       A Plex sign-in page has opened in a new tab.<br><br>
@@ -226,7 +227,7 @@
 
   <!-- INITIALIZING SCREEN -->
   <div id="screen-initializing" class="screen">
-    <div class="logo">▶</div>
+    <div class="logo"><img src="/static/hexos.svg" alt="HexOS"></div>
     <h1>Setting up your server</h1>
     <p class="subtitle">This takes about a minute. Don't close this tab.</p>
 

@@ -14,7 +14,12 @@
       "WebFetch(domain:support.plex.tv)",
       "WebFetch(domain:forums.plex.tv)",
       "WebFetch(domain:rakhesh.com)",
-      "WebFetch(domain:docs.linuxserver.io)"
+      "WebFetch(domain:docs.linuxserver.io)",
+      "WebFetch(domain:www.plexopedia.com)",
+      "Bash(git checkout *)",
+      "Bash(git revert *)",
+      "Bash(python3 *)",
+      "WebFetch(domain:python-plexapi.readthedocs.io)"
     ]
   }
 }

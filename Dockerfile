@@ -10,6 +10,7 @@ COPY hexos_hooks.py /app/hexos_hooks.py
 COPY plex_hook.py /app/plex_hook.py
 COPY setup_server.py /app/setup_server.py
 COPY templates/ /app/templates/
+COPY static/ /app/static/
 
 # Runs before 40-plex-first-run — serves setup UI, gets claim token, injects PLEX_CLAIM
 COPY s6/cont-init/39-plex-setup /etc/cont-init.d/39-plex-setup

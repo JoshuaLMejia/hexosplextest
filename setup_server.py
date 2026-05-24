@@ -23,7 +23,7 @@ state = {
 }
 state_lock = threading.Lock()
 
-app = Flask(__name__, template_folder="/app/templates")
+app = Flask(__name__, template_folder="/app/templates", static_folder="/app/static", static_url_path="/static")
 
 
 @app.after_request
