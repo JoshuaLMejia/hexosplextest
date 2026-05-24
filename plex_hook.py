@@ -103,14 +103,20 @@ def _set_preferences(token: str, ctx: HookContext):
 
 
 def _create_libraries(token: str, ctx: HookContext):
-    existing_paths = _get_existing_paths(token)
+    # Plex sometimes returns 400 immediately after startup because its internal
+    # filesystem scanner hasn't initialized yet. Give it a moment before first attempt.
+    time.sleep(5)
 
     for lib in LIBRARIES:
+        existing_paths = _get_existing_paths(token)
         if lib["location"] in existing_paths:
             ctx.log(f"Library already exists: {lib['name']}")
             continue
 
-        for attempt in range(1, 6):
+        created = False
+        backoff = 5.0
+        max_attempts = 10
+        for attempt in range(1, max_attempts + 1):
             try:
                 resp = requests.post(
                     f"{PLEX_URL}/library/sections",
@@ -123,15 +129,25 @@ def _create_libraries(token: str, ctx: HookContext):
                         "language": "en-US",
                         "location": lib["location"],
                     },
-                    timeout=10,
+                    timeout=15,
                 )
                 if resp.ok:
-                    ctx.log(f"Created library: {lib['name']}")
-                    break
-                ctx.log(f"Library creation failed ({resp.status_code}), retrying...")
-                time.sleep(5)
-            except requests.RequestException:
-                time.sleep(5)
+                    # Verify the library actually exists before declaring success
+                    if lib["location"] in _get_existing_paths(token):
+                        ctx.log(f"Created library: {lib['name']}")
+                        created = True
+                        break
+                    ctx.log(f"{lib['name']} returned 200 but not visible yet, waiting...")
+                else:
+                    ctx.log(f"{lib['name']} attempt {attempt} failed ({resp.status_code}), retrying in {int(backoff)}s")
+            except requests.RequestException as e:
+                ctx.log(f"{lib['name']} attempt {attempt} network error: {e}")
+
+            time.sleep(backoff)
+            backoff = min(backoff * 1.5, 20.0)
+
+        if not created:
+            ctx.log(f"FAILED to create library {lib['name']} after {max_attempts} attempts")
 
 
 def _get_existing_paths(token: str) -> set:
