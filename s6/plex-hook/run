@@ -1,0 +1,16 @@
+#!/usr/bin/with-contenv bash
+# Runs once after Plex starts. Waits for the signal file to exist (meaning
+# setup was triggered this boot, not a restart), then runs the post-install
+# hook to set preferences and create libraries.
+
+SIGNAL_FILE="/tmp/plex-claim"
+
+# If no signal file, setup didn't run this boot (already claimed) — exit cleanly
+if [ ! -f "$SIGNAL_FILE" ]; then
+    exit 0
+fi
+
+echo "[plex-hook] Setup signal detected. Running post-install hook..."
+exec /opt/setup-venv/bin/python /app/plex_hook.py \
+    --entrypoint after_install \
+    --context "{\"appId\":\"plex\",\"event\":\"onAfterInstall\",\"containerName\":\"\",\"mounts\":{\"/movies\":\"/movies\",\"/shows\":\"/shows\"},\"truenasApiKey\":\"\",\"truenasRestUrl\":\"\"}"

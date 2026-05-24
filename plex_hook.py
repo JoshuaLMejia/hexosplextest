@@ -25,31 +25,30 @@ LIBRARIES = [
 
 
 def after_install(ctx: HookContext):
-    # Preferences.xml was already patched with PlexOnlineToken before Plex started.
-    # We just need to wait for Plex to be ready, then create libraries.
-    token = _read_token(ctx)
+    token = _wait_for_token(ctx)
     if not token:
         raise RuntimeError("PlexOnlineToken not found in Preferences.xml.")
 
     _wait_for_ready(ctx)
+    _set_preferences(token, ctx)
     _create_libraries(token, ctx)
     ctx.log("Setup complete.")
 
 
-def _read_token(ctx: HookContext) -> str:
-    """Read PlexOnlineToken directly from Preferences.xml."""
+def _wait_for_token(ctx: HookContext) -> str:
     for attempt in range(1, 21):
         try:
             with open(PREFS_PATH, "r") as f:
                 contents = f.read()
             match = re.search(r'PlexOnlineToken="([^"]+)"', contents)
             if match:
+                ctx.log("Plex account token found.")
                 return match.group(1)
         except (FileNotFoundError, IOError):
             pass
 
         if attempt == 1:
-            ctx.log("Waiting for Preferences.xml...")
+            ctx.log("Waiting for PlexOnlineToken in Preferences.xml...")
         time.sleep(5)
 
     return ""
@@ -67,7 +66,6 @@ def _wait_for_ready(ctx: HookContext):
             )
             if resp.status_code == 200:
                 machine_id = resp.json().get("MediaContainer", {}).get("machineIdentifier", "")
-                # Reject our Flask stub — it returns machineIdentifier="setup"
                 if machine_id and machine_id != "setup":
                     ctx.log("Plex is ready.")
                     return
@@ -78,6 +76,30 @@ def _wait_for_ready(ctx: HookContext):
         interval = min(interval + 2.0, 15.0)
 
     raise RuntimeError("Plex did not become ready in time.")
+
+
+def _set_preferences(token: str, ctx: HookContext):
+    prefs = [
+        {"AcceptedEULA": 1},
+        {"PublishServerOnPlexOnlineKey": 1},
+        {"FriendlyName": "HexOS Plex"},
+    ]
+    for params in prefs:
+        key = list(params.keys())[0]
+        params["X-Plex-Token"] = token
+        for attempt in range(1, 4):
+            try:
+                resp = requests.put(f"{PLEX_URL}/:/prefs", params=params, timeout=5)
+                if resp.ok:
+                    ctx.log(f"Set preference: {key}")
+                    break
+                if attempt == 3:
+                    ctx.log(f"Failed to set {key} after 3 attempts ({resp.status_code})")
+                time.sleep(5)
+            except requests.RequestException as e:
+                if attempt == 3:
+                    ctx.log(f"Request error setting {key}: {e}")
+                time.sleep(5)
 
 
 def _create_libraries(token: str, ctx: HookContext):

@@ -1,0 +1,41 @@
+#!/usr/bin/with-contenv bash
+# cont-init.d/39-plex-setup
+# Runs before 40-plex-first-run. If Plex is already claimed (token exists
+# in Preferences.xml), exits immediately. Otherwise starts the Flask setup
+# UI on port 32400, waits for the user to complete OAuth, then injects
+# PLEX_CLAIM into the s6 environment so 40-plex-first-run can exchange it.
+
+PREFS_PATH="/config/Library/Application Support/Plex Media Server/Preferences.xml"
+SIGNAL_FILE="/tmp/plex-claim"
+
+# Already set up — nothing to do
+if [ -f "$PREFS_PATH" ]; then
+    if grep -q 'PlexOnlineToken="[^"]\+' "$PREFS_PATH" 2>/dev/null; then
+        echo "[39-plex-setup] Server already claimed. Skipping setup."
+        exit 0
+    fi
+fi
+
+echo "[39-plex-setup] Starting setup UI on port 32400..."
+/opt/setup-venv/bin/python /app/setup_server.py &
+SETUP_PID=$!
+
+echo "[39-plex-setup] Waiting for OAuth to complete..."
+while [ ! -f "$SIGNAL_FILE" ]; do
+    sleep 2
+done
+
+CLAIM_TOKEN="$(cat "$SIGNAL_FILE")"
+
+if [ -n "$CLAIM_TOKEN" ]; then
+    echo "[39-plex-setup] Claim token received. Injecting PLEX_CLAIM for 40-plex-first-run."
+    # This is how s6-overlay v2 passes env vars to subsequent cont-init.d scripts
+    printf '%s' "$CLAIM_TOKEN" > /var/run/s6/container_environment/PLEX_CLAIM
+    export PLEX_CLAIM="$CLAIM_TOKEN"
+fi
+
+echo "[39-plex-setup] Stopping setup UI."
+kill "$SETUP_PID" 2>/dev/null
+wait "$SETUP_PID" 2>/dev/null
+
+exit 0
