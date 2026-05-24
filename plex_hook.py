@@ -25,33 +25,51 @@ LIBRARIES = [
 
 
 def after_install(ctx: HookContext):
-    # Give the s6 script time to kill Flask and let Plex bind to 32400
-    ctx.log("Waiting for Plex to start up...")
-    time.sleep(10)
-
-    token = _wait_for_token(ctx)
+    # Preferences.xml was already patched with PlexOnlineToken before Plex started.
+    # We just need to wait for Plex to be ready, then create libraries.
+    token = _read_token(ctx)
     if not token:
-        raise RuntimeError("PlexOnlineToken missing. Did Plex start correctly?")
+        raise RuntimeError("PlexOnlineToken not found in Preferences.xml.")
 
     _wait_for_ready(ctx)
-    _set_preferences(token, ctx)
     _create_libraries(token, ctx)
     ctx.log("Setup complete.")
 
 
+def _read_token(ctx: HookContext) -> str:
+    """Read PlexOnlineToken directly from Preferences.xml."""
+    for attempt in range(1, 21):
+        try:
+            with open(PREFS_PATH, "r") as f:
+                contents = f.read()
+            match = re.search(r'PlexOnlineToken="([^"]+)"', contents)
+            if match:
+                return match.group(1)
+        except (FileNotFoundError, IOError):
+            pass
+
+        if attempt == 1:
+            ctx.log("Waiting for Preferences.xml...")
+        time.sleep(5)
+
+    return ""
+
+
 def _wait_for_ready(ctx: HookContext):
-    ctx.log("Waiting for Plex to start...")
+    ctx.log("Waiting for Plex API...")
     interval = 5.0
     for attempt in range(1, 40):
         try:
-            resp = requests.get(f"{PLEX_URL}/identity", timeout=5)
+            resp = requests.get(
+                f"{PLEX_URL}/identity",
+                headers={"Accept": "application/json"},
+                timeout=5,
+            )
             if resp.status_code == 200:
-                # Reject our own Flask stub — it returns {"MediaContainer": {"machineIdentifier": "setup"}}
-                # Real Plex returns a much longer identifier and includes "size" and "claimed" fields
-                data = resp.json()
-                machine_id = data.get("MediaContainer", {}).get("machineIdentifier", "")
+                machine_id = resp.json().get("MediaContainer", {}).get("machineIdentifier", "")
+                # Reject our Flask stub — it returns machineIdentifier="setup"
                 if machine_id and machine_id != "setup":
-                    ctx.log("Plex API is ready.")
+                    ctx.log("Plex is ready.")
                     return
         except requests.RequestException:
             pass
@@ -59,52 +77,7 @@ def _wait_for_ready(ctx: HookContext):
         time.sleep(interval)
         interval = min(interval + 2.0, 15.0)
 
-    raise RuntimeError("Plex API did not become ready after waiting.")
-
-
-def _wait_for_token(ctx: HookContext):
-    # We're running inside the container — read Preferences.xml directly
-    for attempt in range(1, 21):
-        try:
-            with open(PREFS_PATH, "r") as f:
-                contents = f.read()
-            match = re.search(r'PlexOnlineToken="([^"]+)"', contents)
-            if match:
-                ctx.log("Plex account token found.")
-                return match.group(1)
-        except (FileNotFoundError, IOError):
-            pass
-
-        if attempt == 1:
-            ctx.log("Waiting for Preferences.xml to be written...")
-
-        time.sleep(5)
-
-    return None
-
-
-def _set_preferences(token: str, ctx: HookContext):
-    prefs = [
-        {"AcceptedEULA": 1},
-        {"PublishServerOnPlexOnlineKey": 1},
-        {"FriendlyName": "HexOS Plex"},
-    ]
-    for params in prefs:
-        key = list(params.keys())[0]
-        params["X-Plex-Token"] = token
-        for attempt in range(1, 4):
-            try:
-                resp = requests.put(f"{PLEX_URL}/:/prefs", params=params, timeout=5)
-                if resp.ok:
-                    ctx.log(f"Set preference: {key}")
-                    break
-                if attempt == 3:
-                    ctx.log(f"Failed to set {key} after 3 attempts ({resp.status_code})")
-                time.sleep(5)
-            except requests.RequestException as e:
-                if attempt == 3:
-                    ctx.log(f"Request error setting {key}: {e}")
-                time.sleep(5)
+    raise RuntimeError("Plex did not become ready in time.")
 
 
 def _create_libraries(token: str, ctx: HookContext):
@@ -112,7 +85,7 @@ def _create_libraries(token: str, ctx: HookContext):
 
     for lib in LIBRARIES:
         if lib["location"] in existing_paths:
-            ctx.log(f"Skipping {lib['name']} — library already exists at {lib['location']}")
+            ctx.log(f"Library already exists: {lib['name']}")
             continue
 
         for attempt in range(1, 6):
@@ -139,7 +112,7 @@ def _create_libraries(token: str, ctx: HookContext):
                 time.sleep(5)
 
 
-def _get_existing_paths(token: str):
+def _get_existing_paths(token: str) -> set:
     try:
         resp = requests.get(
             f"{PLEX_URL}/library/sections",

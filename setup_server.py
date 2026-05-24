@@ -1,13 +1,15 @@
 import os
+import re
 import sys
 import threading
 import time
 import uuid
+import xml.etree.ElementTree as ET
 from collections import deque
 from datetime import datetime
 
 import requests
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, redirect, render_template, request
 
 sys.path.insert(0, "/app")
 
@@ -16,10 +18,11 @@ import plex_hook
 
 PLEX_URL = "http://localhost:32400"
 SIGNAL_FILE = "/tmp/plex-claim"
+PREFS_PATH = "/config/Library/Application Support/Plex Media Server/Preferences.xml"
 CLIENT_ID = str(uuid.uuid4())
 PORT = int(os.environ.get("PLEX_SETUP_PORT", 32400))
 
-# State machine values: "login" | "waiting_auth" | "initializing" | "done" | "error"
+# State machine: "login" | "waiting_auth" | "initializing" | "done" | "error"
 state = {
     "screen": "login",
     "logs": deque(maxlen=200),
@@ -46,8 +49,8 @@ def _add_log(msg: str):
 
 @app.route("/identity")
 def identity():
-    # Returns a stub so TrueNAS health checks pass during setup.
-    # machineIdentifier="setup" is checked by plex_hook.py to know Flask is still running.
+    # Stub for TrueNAS health checks. "setup" identifier is used by plex_hook
+    # to detect that Flask (not real Plex) is still answering on this port.
     return jsonify({"MediaContainer": {"machineIdentifier": "setup", "version": "setup", "size": 0}})
 
 
@@ -55,7 +58,6 @@ def identity():
 @app.route("/web/")
 @app.route("/web/<path:subpath>")
 def plex_web_redirect(subpath=""):
-    from flask import redirect
     return redirect("/")
 
 
@@ -103,8 +105,6 @@ def auth_start():
         with state_lock:
             state["pin_id"] = pin_id
             state["screen"] = "waiting_auth"
-            # Plex claim tokens expire in ~4 minutes; PIN itself expires later but
-            # we surface the 4-min window since that's the binding constraint.
             state["token_expires_at"] = time.time() + 240
 
         auth_url = (
@@ -149,6 +149,7 @@ def auth_poll():
         if not auth_token:
             return jsonify({"ok": True, "done": False})
 
+        # Exchange claim token (short-lived) for the permanent online token
         claim_resp = requests.get(
             "https://plex.tv/api/claim/token.json",
             headers={**headers, "X-Plex-Token": auth_token},
@@ -162,9 +163,9 @@ def auth_poll():
             state["claim_token"] = claim_token
             state["screen"] = "initializing"
 
-        # Start background thread — writes signal file after a delay so Flask
-        # finishes responding to this request before s6 kills the process
-        threading.Thread(target=_signal_and_run, args=(claim_token,), daemon=True).start()
+        # Delay before writing signal so browser receives this response and
+        # renders the initializing screen before s6 kills Flask
+        threading.Thread(target=_prepare_and_signal, args=(auth_token, claim_token), daemon=True).start()
 
         return jsonify({"ok": True, "done": True})
     except Exception as e:
@@ -173,7 +174,6 @@ def auth_poll():
 
 @app.route("/api/auth/restart", methods=["POST"])
 def auth_restart():
-    """Let the user restart the PIN flow if the claim token expired."""
     with state_lock:
         state["screen"] = "login"
         state["pin_id"] = None
@@ -186,21 +186,117 @@ def auth_restart():
 
 
 # ---------------------------------------------------------------------------
-# Post-install hook runner
+# Core setup logic
 # ---------------------------------------------------------------------------
 
-def _signal_and_run(claim_token: str):
-    # Wait long enough for the poll response to reach the browser and for
-    # the initializing screen to render before s6 kills Flask
-    time.sleep(8)
+def _prepare_and_signal(auth_token: str, claim_token: str):
+    """
+    Runs in background after OAuth completes.
+    1. Exchanges claim token for PlexOnlineToken via plex.tv API
+    2. Writes PlexOnlineToken + EULA flags directly into Preferences.xml
+    3. Signals s6 to kill Flask and start Plex
+    4. Waits for real Plex to come up, then creates libraries
+    """
+    # Give browser time to receive the poll response and render initializing screen
+    time.sleep(5)
+
+    _add_log("Exchanging claim token for server token...")
+    online_token = _exchange_claim_token(claim_token)
+
+    if online_token:
+        _add_log("Writing token and preferences to disk...")
+        _patch_preferences_xml(online_token)
+    else:
+        # Fall back to passing claim token via signal file and letting
+        # pms-docker's 40-plex-first-run handle it on next start — but
+        # since first-run already ran, this won't work. Log the warning.
+        _add_log("Warning: could not exchange claim token. Plex wizard may appear.")
+
+    # Signal s6 to start Plex (write signal file — content unused now but kept for compatibility)
+    _add_log("Starting Plex...")
     with open(SIGNAL_FILE, "w") as f:
         f.write(claim_token)
-    # _run_post_install will wait for Plex to actually be up before doing anything
+
+    # Run post-install hook (creates libraries) after Plex is up
     _run_post_install()
 
 
+def _exchange_claim_token(claim_token: str) -> str:
+    """
+    Exchanges the short-lived claim token for the permanent PlexOnlineToken
+    by calling the plex.tv claim exchange endpoint directly.
+    Returns the PlexOnlineToken string, or empty string on failure.
+    """
+    try:
+        # Get the machine identifier that pms-docker already wrote
+        machine_id = _read_machine_identifier()
+        if not machine_id:
+            _add_log("Could not read MachineIdentifier from Preferences.xml")
+            return ""
+
+        resp = requests.post(
+            "https://plex.tv/api/claim/exchange",
+            headers={
+                "X-Plex-Client-Identifier": machine_id,
+                "Accept": "application/json",
+            },
+            params={"token": claim_token},
+            timeout=15,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        token = (
+            data.get("authToken")
+            or data.get("user", {}).get("authToken")
+            or data.get("token")
+            or ""
+        )
+        if token:
+            _add_log("Server token obtained.")
+        return token
+    except Exception as e:
+        _add_log(f"Claim exchange error: {e}")
+        return ""
+
+
+def _read_machine_identifier() -> str:
+    """Reads MachineIdentifier from the Preferences.xml that pms-docker wrote."""
+    try:
+        with open(PREFS_PATH, "r") as f:
+            contents = f.read()
+        match = re.search(r'MachineIdentifier="([^"]+)"', contents)
+        return match.group(1) if match else ""
+    except (FileNotFoundError, IOError):
+        return ""
+
+
+def _patch_preferences_xml(online_token: str):
+    """
+    Writes PlexOnlineToken, AcceptedEULA, PublishServerOnPlexOnlineKey, and
+    FriendlyName directly into Preferences.xml before Plex starts.
+    Plex reads this file at startup — having PlexOnlineToken present means
+    it will skip the first-run wizard entirely.
+    """
+    try:
+        with open(PREFS_PATH, "r") as f:
+            contents = f.read()
+
+        # Parse and patch attributes
+        tree = ET.parse(PREFS_PATH)
+        root = tree.getroot()
+        root.set("PlexOnlineToken", online_token)
+        root.set("AcceptedEULA", "1")
+        root.set("PublishServerOnPlexOnlineKey", "1")
+        root.set("FriendlyName", "HexOS Plex")
+
+        tree.write(PREFS_PATH, encoding="utf-8", xml_declaration=True)
+        _add_log("Preferences written.")
+    except Exception as e:
+        _add_log(f"Error patching Preferences.xml: {e}")
+
+
 def _run_post_install():
-    _add_log("Plex is starting up...")
+    _add_log("Waiting for Plex to start...")
 
     ctx_data = {
         "appId": "plex",

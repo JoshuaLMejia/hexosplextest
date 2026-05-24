@@ -10,7 +10,11 @@
       "Bash(git add *)",
       "Bash(git commit *)",
       "Bash(git push *)",
-      "WebFetch(domain:raw.githubusercontent.com)"
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:support.plex.tv)",
+      "WebFetch(domain:forums.plex.tv)",
+      "WebFetch(domain:rakhesh.com)",
+      "WebFetch(domain:docs.linuxserver.io)"
     ]
   }
 }
