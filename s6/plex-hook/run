@@ -11,6 +11,11 @@ if [ ! -f "$SIGNAL_FILE" ]; then
 fi
 
 echo "[plex-hook] Setup signal detected. Running post-install hook..."
-exec /opt/setup-venv/bin/python /app/plex_hook.py \
+/opt/setup-venv/bin/python /app/plex_hook.py \
     --entrypoint after_install \
     --context "{\"appId\":\"plex\",\"event\":\"onAfterInstall\",\"containerName\":\"\",\"mounts\":{\"/movies\":\"/movies\",\"/shows\":\"/shows\"},\"truenasApiKey\":\"\",\"truenasRestUrl\":\"\"}"
+
+# Remove signal file so this service exits cleanly on any future s6 restart
+rm -f /tmp/plex-claim
+echo "[plex-hook] Done."
+exit 0
