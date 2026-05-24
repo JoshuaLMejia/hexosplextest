@@ -5,7 +5,11 @@
       "WebFetch(domain:github.com)",
       "WebFetch(domain:hub.docker.com)",
       "WebFetch(domain:plexapi.dev)",
-      "WebFetch(domain:developer.plex.tv)"
+      "WebFetch(domain:developer.plex.tv)",
+      "Bash(docker manifest inspect *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push *)"
     ]
   }
 }

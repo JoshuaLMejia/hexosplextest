@@ -11,13 +11,18 @@ COPY plex_hook.py /app/plex_hook.py
 COPY setup_server.py /app/setup_server.py
 COPY templates/ /app/templates/
 
-# s6 service: holds Plex until claim token is ready
-COPY s6/plex-setup/run /etc/cont-init.d/50-plex-claim-wait
-RUN chmod +x /etc/cont-init.d/50-plex-claim-wait
+# s6 service: waits for claim token then signals Plex to start
+COPY s6/plex-setup/run /etc/services.d/plex-setup/run
+COPY s6/plex-setup/finish /etc/services.d/plex-setup/finish
+RUN chmod +x /etc/services.d/plex-setup/run /etc/services.d/plex-setup/finish
 
 # s6 service: the setup sidecar web server
 COPY s6/setup-server/run /etc/services.d/setup-server/run
 RUN chmod +x /etc/services.d/setup-server/run
+
+# Override the Plex service to wait for setup-done signal
+COPY s6/plex/run /etc/services.d/plex/run
+RUN chmod +x /etc/services.d/plex/run
 
 EXPOSE 32400 7070
 

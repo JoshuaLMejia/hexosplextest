@@ -1,0 +1,12 @@
+#!/usr/bin/with-contenv bash
+# services.d/plex/run
+# Waits for plex-setup to signal done, then hands off to the real Plex binary.
+
+echo "[plex] Waiting for setup to complete..."
+
+while [ ! -f /tmp/plex-setup-done ]; do
+    sleep 2
+done
+
+echo "[plex] Setup done. Starting Plex Media Server."
+exec /usr/lib/plexmediaserver/Plex\ Media\ Server
