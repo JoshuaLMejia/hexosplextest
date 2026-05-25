@@ -26,3 +26,5 @@ COPY s6/plex-hook/finish /etc/services.d/plex-hook/finish
 RUN chmod +x /etc/services.d/plex-hook/run /etc/services.d/plex-hook/finish
 
 EXPOSE 32400
+
+# update test delete after
